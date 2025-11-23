@@ -65,5 +65,8 @@ def get_pager_file(book):
     # Return the pager file for the given book.
     pager_path = os.path.join(get_book_dir(book), 'pager.js')
     if os.path.exists(pager_path):
+        with open(pager_path) as f:
+            if "!DOCTYPE html" in f.readline():
+                return download_file_test_url(pager_try_urls, book, pager_path)
         return pager_path
     return download_file_test_url(pager_try_urls, book, pager_path)
