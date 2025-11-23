@@ -8,7 +8,7 @@ cookies = {}
 
 logger.debug("Opening Cookies")
 with open("cookies.txt", "r") as cookiesFile:
-    cookies_contents = cookiesFile.read()
+    cookies_contents = cookiesFile.read().strip()
     cookies_array = cookies_contents.split(";")
     logger.info("Loading " + str(len(cookies_array)) + " cookies")
     for cookie in cookies_array:
