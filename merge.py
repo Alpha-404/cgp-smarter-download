@@ -1,14 +1,16 @@
-import os, logging
+import os, logging, glob, logconf
 
-import logconf
 from weasyprint import HTML, CSS
 from pathlib import Path
-import glob
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logconf.loggerLevel)
+
+logging.getLogger('weasyprint').setLevel(logging.ERROR)
+logging.getLogger('fontTools').setLevel(logging.ERROR)
 
 from book import bookId
 
@@ -101,8 +103,7 @@ def merge_htmls_to_pdf(output_dir="output", book_id=None, page_size=None, margin
     
     documents = []
     
-    for html_file in html_files:
-        print(f"Processing: {Path(html_file).name}")
+    for html_file in tqdm(html_files, desc="Loading HTML", unit="file"):
         html = HTML(filename=html_file, base_url=str(book_dir))
         documents.append(html)
     
@@ -111,7 +112,7 @@ def merge_htmls_to_pdf(output_dir="output", book_id=None, page_size=None, margin
         print("Rendering PDF...")
         
         all_pages = []
-        for doc in documents:
+        for doc in tqdm(documents, desc="Rendering", unit="doc"):
             rendered = doc.render(stylesheets=[page_css])
             all_pages.extend(rendered.pages)
         
