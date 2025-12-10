@@ -1,4 +1,4 @@
-import json, os, requests, logging
+import json, os, requests, logging, re
 
 import pagerlib
 
@@ -50,6 +50,36 @@ if (not os.path.exists(bookPath)):
 
 failed_downloads = []
 
+# Global set to store all unique font faces
+all_font_faces = set()
+
+def extract_fonts_from_svg(svg_path):
+    """Extract @font-face declarations from SVG file"""
+    try:
+        with open(svg_path, 'r', encoding='utf-8') as f:
+            svg_content = f.read()
+        
+        # Extract @font-face rules from SVG style blocks
+        style_pattern = r'<(?:svg:)?style[^>]*>(.*?)</(?:svg:)?style>'
+        styles = re.findall(style_pattern, svg_content, re.DOTALL | re.IGNORECASE)
+        
+        fonts = set()
+        for style in styles:
+            # Match @font-face blocks with data URLs
+            font_face_pattern = r'@font-face\s*\{[^}]+url\([^)]+\)[^}]*\}'
+            matches = re.findall(font_face_pattern, style, re.DOTALL)
+            
+            # Clean up double semicolons
+            for match in matches:
+                cleaned = re.sub(r';;', ';', match)
+                fonts.add(cleaned)
+        
+        logger.debug(f"Extracted {len(fonts)} fonts from {svg_path}")
+        return fonts
+    except Exception as e:
+        logger.error(f"Error extracting fonts from {svg_path}: {e}")
+        return set()
+
 # Download a file
 # Unless force is true, will not download if file already exists
 # Returns the full path and relative path of the downloaded file
@@ -62,6 +92,12 @@ def download(url, force=False):
     save_dir = os.path.dirname(save_filename)
     if (os.path.exists(save_filename) and not force):
         logger.debug("File already exists, skipping")
+        
+        # If it's an SVG, still extract fonts
+        if save_filename.endswith('.svg'):
+            fonts = extract_fonts_from_svg(save_filename)
+            all_font_faces.update(fonts)
+        
         return save_filename, filename_replaced
     # Make request
     res = requests.get(url, cookies=cookies)
@@ -76,6 +112,12 @@ def download(url, force=False):
             saveFile.write(res.content)
             saveFile.close()
         logger.debug("Saved file to " + save_filename)
+        
+        # If it's an SVG, extract fonts
+        if save_filename.endswith('.svg'):
+            fonts = extract_fonts_from_svg(save_filename)
+            all_font_faces.update(fonts)
+        
         return save_filename, filename_replaced
     # If we're still here, download has failed
     logger.error("Download failed of file " + url)
@@ -168,7 +210,10 @@ if ("defaults" in pages):
     if ("backgroundColor" in page_contents):
         default_background_colour = page_contents["backgroundColor"]
     if ("wide" in page_contents):
-        default_is_wide = page_contents["slideDelay"]
+        try:
+            default_is_wide = page_contents["slideDelay"]
+        except KeyError:
+            default_is_wide = False
     if ("pageResize" in page_contents):
         default_pageresize = page_contents["pageResize"]
     if ("shadowDepth" in page_contents):
@@ -355,31 +400,16 @@ for page_name, page_contents in pages.items():
         f.write(page_template)
         f.close()
 
+# After processing all pages, write a global font CSS file
+logger.info(f"Writing global font definitions ({len(all_font_faces)} fonts found)")
+font_css_content = "/* Fonts extracted from SVG files */\n" + '\n'.join(all_font_faces)
+font_css_path = os.path.join(bookPath, "fonts.css")
+with open(font_css_path, "w") as f:
+    f.write(font_css_content)
+    f.close()
+
 logger.info("Done!")
+logger.info(f"Extracted {len(all_font_faces)} unique fonts to fonts.css")
 logger.info("Failed Downloads: " + str(len(failed_downloads)))
 for download in failed_downloads:
     logger.info(download)
-
-###
-# substrate/text layer size is the 1-based index of the size in the sizes array
-# e.g. first in list = 1, second = 2, etc
-
-# background image url:
-# https://library.cgpbooks.co.uk/digitalcontent/{bookId}/assets/common/page-html5-substrates/page{page}_{substrate_size}.{substrate_format}
-
-# Image text layers:
-# https://library.cgpbooks.co.uk/digitalcontent/{bookId}/assets/common/page-textlayers/page{page}_{textlayer_size}.{textlayer_format}
-
-# image vector layers:
-# https://library.cgpbooks.co.uk/digitalcontent/{bookId}/assets/common/page-vectorlayers/{page}.svg
-
-# thumbnail:
-# https://library.cgpbooks.co.uk/digitalcontent/{bookId}/assets/flash/pages/page{page}_s.{thumbnail_format}
-
-# search index:
-# https://library.cgpbooks.co.uk/digitalcontent/{bookId}/assets/mobile/search/search{page}.xml
-
-# text blocks:
-# https://library.cgpbooks.co.uk/digitalcontent/{bookId}/assets/textblocks/page{page}.xml
-
-###
